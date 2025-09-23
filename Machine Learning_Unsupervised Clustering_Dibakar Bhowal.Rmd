@@ -1,0 +1,125 @@
+---
+title: "Unsupervised Clustering of Wine Based on Chemical Analysis"
+author: "Dibakar Bhowal"
+date: "2025-03-31"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading Necessary Libraries
+```{r}
+library(factoextra)
+library(tidyr)
+library(caret)
+library(e1071)
+library(dplyr)
+library(cluster)
+library(tinytex)
+library(dbscan)
+library(fpc)
+```
+
+## Loading and Preparing the Data
+```{r}
+wines <- read.csv("/home/mukta/Downloads/Wine_Clustering.csv")
+wines.norm <- scale(wines)  # Normalization of data for clustering
+```
+
+## Q1-A: Effect of Normalization and Number of Clusters (k)
+**Normalization**: K-means relies on Euclidean distance, which is sensitive to scale. Normalization ensures that attributes with large values do not dominate clustering results.
+
+**Choosing k**: The number of clusters affects the quality of clustering. We will use the **Elbow Method** and **Silhouette Analysis** to determine the optimal k.
+
+```{r}
+# Find optimal k using WSS (Elbow Method)
+fviz_nbclust(wines.norm, kmeans, method = "wss") + theme_minimal()
+
+# Find optimal k using Silhouette Method
+fviz_nbclust(wines.norm, kmeans, method = "silhouette") + theme_minimal()
+```
+
+# Both methods indicate '3' to be the optimal 'k' value.
+
+## Q1-B: K-Means Clustering
+# Applying K-Means clustering using '3' as the optimal 'k' value.
+
+```{r}
+set.seed(123)  
+optimal_k <- 3  #
+kmeans.wines <- kmeans(wines.norm, centers = optimal_k, nstart = 25)
+
+# Print cluster centers and sizes
+kmeans.wines$centers
+kmeans.wines$size
+kmeans.wines$withinss
+
+# Visualize clusters
+fviz_cluster(list(data = wines.norm, cluster = kmeans.wines$cluster)) + theme_minimal()
+```
+
+## Interpretation of K-Means Clusters
+#Cluster 1: Represents wines with higher tartness and richness (e.g., higher Malic_Acid and Color_Intensity) but fewer antioxidant properties(e.g. lower Flavanoids and OD280).
+
+#Cluster 2: Groups antioxidant-rich wines with higher Alcohol and Flavanoids, indicating a strong and bold flavor profile.
+
+#Cluster 3: Contains lighter wines with more balanced chemical attributes and relatively moderate Alcohol levels.
+
+## Q2-A: DBSCAN vs K-Means
+**Differences:**
+- **K-Means** assumes spherical clusters, requires 'k', and is sensitive to outliers.
+- **DBSCAN** detects arbitrarily shaped clusters, identifies outliers as noise, and does not require 'k'.
+
+## Q2-B: DBSCAN Clustering
+# First, let's determine an appropriate epsilon (ε) value using a k-distance plot. According to the instructions we have to assume k = 3 for this purpose. We will use PCA to reduce components for better results.
+
+```{r}
+pca <- prcomp(wines.norm, center = TRUE, scale. = TRUE)
+wines.pca <- data.frame(pca$x[, 1:3])  # Selecting first 3 principal components
+```
+
+```{r}
+# Finding epsilon using kNN distance plot
+dbscan::kNNdistplot(wines.pca, k = 3)
+abline(h = 1, col = "red", lty = 2)
+```
+
+# We can see around 1 ish the graph sharply ascends. Indicating Epsilon value might be ~1, We will try small deviations and pick whichever gives more consistent output.
+
+# Applying DBSCAN clustering:
+
+```{r}
+DBscan.wines.pca <- fpc::dbscan(wines.pca, eps = 1, MinPts = 5)
+
+# View results
+print(DBscan.wines.pca)
+
+# Visualize clusters
+fviz_cluster(list(data = wines.pca, cluster = DBscan.wines.pca$cluster)) + theme_minimal()
+```
+
+## Interpretation of DBSCAN Clusters:
+# Cluster 1: The largest cluster, with 110 points (90 core and 20 border points). This represents the majority group of wine samples with similar principal component patterns.
+
+# Cluster 2: A smaller but distinct cluster with 44 points (39 core and 5 border points), likely representing a subgroup of wines with unique characteristics.
+
+# Noise (Cluster 0): Contains 24 points classified as noise, indicating outliers that do not belong to any dense cluster.
+
+### Influence of ε and minPts
+- **ε (epsilon)**: Defines the radius of a neighborhood. A small ε leads to many small clusters or noise points, while a large ε may merge distinct clusters.
+- **minPts**: Minimum points required to form a dense cluster. A higher value reduces noise but may miss smaller clusters.
+
+# Q3: Comparison of K-Means and DBSCAN
+| Feature  | K-Means  | DBSCAN |
+|----------|---------|--------|
+| Requires k? | Yes  | No |
+| Handles Outliers? | No | Yes |
+| Works for Arbitrary Shapes? | No | Yes |
+| Cluster Density Sensitivity | No | Yes |
+
+### Conclusion
+- K-Means is efficient for well-separated, spherical clusters.
+- DBSCAN is useful for detecting noise and irregularly shaped clusters.
+- The choice depends on dataset characteristics and clustering goals.
